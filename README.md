@@ -24,7 +24,7 @@ O SMILE é um dispositivo criado na placa BitDogLab, usando um sensor de corrent
 Realiza as leituras em tempo real da potencia em KW, consumo em KWH e estimativa em reais.
 - **Estimativa Mensal**
 Por meio de um calculo de média do consumo, nessa opção é feita a estimativa de gasto no mês, tanto em KWH como em Reais.
-## Espicificação do Hardware
+## Especificação do Hardware
 ### Componentes Utilizados
 - **Raspberry Pi Pico W**
 Microcontrolador com um processador Dual-Core ARM Cortex M0+, rodando em até 133MHz. Possui 264kB de memória SRAM e 2MB de memória Flash integrada na placa. Além de conexões GPIO para conexão de sensores ou atuadores, gerenciamento de interrupções, conectividade WI-FI e Bluetooth, suporte a UART, SPI, I2C, ADC e PIO.
@@ -43,7 +43,7 @@ O Push button (botão de pressão) é uma chave que, quando pressionado o botão
 | Sensor SCT-013       | GPIO 28                                 | Medir Corrente                         |
 | Display OLED (SDA)   | GPIO 14                                 | Comunicação I2C – Dados                |
 | Display OLED (SCL)   | GPIO 15                                 | Comunicação I2C – Clock                |
-## Especificações do Firmware
+## Especificação do Firmware
 
 O firmware foi desenvolvido em linguagem C, utilizando o SDK oficial do Raspberry Pi Pico W e a biblioteca pico-ssd1306 para controle do display OLED. Suas principais funcionalidades incluem:
 
