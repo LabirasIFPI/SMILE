@@ -123,7 +123,7 @@ Os menus disponíveis incluem:
 - Modo Estimativa: Mostra a média de consumo mensal e o custo aproximado.
 ## Endpoints do Servidor
 - **`GET /update?kw=<valor>&estimate=<valor>&total=<valor>`** → Atualiza os dados de consumo no servidor.
-
+- A conexão do servidor é depedente do código [@servidor_SMILE](https://github.com/antoniojosemota/servidor_SMILE.git), seguindo o passo-a-passo para estabelecer a conexão com sucesso.
 ## Melhorias Futuras
 - Integração com sistemas de automação residencial.
 
