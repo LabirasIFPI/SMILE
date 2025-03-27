@@ -25,7 +25,7 @@ Realiza as leituras em tempo real da potencia em KW, consumo em KWH e estimativa
 - **Estimativa Mensal**
 Por meio de um calculo de média do consumo, nessa opção é feita a estimativa de gasto no mês, tanto em KWH como em Reais.
 ## Espicificação do Hardware
-### Componentes
+### Componentes Utilizados
 - **Raspberry Pi Pico W**
 Microcontrolador com um processador Dual-Core ARM Cortex M0+, rodando em até 133MHz. Possui 264kB de memória SRAM e 2MB de memória Flash integrada na placa. Além de conexões GPIO para conexão de sensores ou atuadores, gerenciamento de interrupções, conectividade WI-FI e Bluetooth, suporte a UART, SPI, I2C, ADC e PIO.
 - **Sensor SCT-013**
@@ -47,7 +47,7 @@ O Push button (botão de pressão) é uma chave que, quando pressionado o botão
 
 O firmware foi desenvolvido em linguagem C, utilizando o SDK oficial do Raspberry Pi Pico W e a biblioteca pico-ssd1306 para controle do display OLED. Suas principais funcionalidades incluem:
 
-**Inicialização dos Periféricos**
+### Inicialização dos Periféricos
 
 Logo após a energização do sistema, o firmware executa a inicialização dos seguintes componentes:
 
@@ -61,18 +61,18 @@ Logo após a energização do sistema, o firmware executa a inicialização dos 
 
 - WI-FI: Conectando a rede local e ao computador de borda.
 
-**Leitura e Processamento dos Dados**
+### Leitura e Processamento dos Dados**
 
-### 1. Leitura dos Dados do Sensor  
+#### 1. Leitura dos Dados do Sensor  
 - O firmware usa o **ADC (Conversor Analógico-Digital)** do Raspberry Pi Pico para ler os dados do sensor de corrente SCT-013.  
 - O **pino ADC 28** é utilizado para a conexão com o sensor.  
 - O ADC é configurado para operar com uma **tensão de referência de 3.3V** e uma resolução de **12 bits (0-4095)**.  
 
-### 2. Calibração do Sensor  
+#### 2. Calibração do Sensor  
 - Antes de iniciar a medição, o firmware executa uma **calibração dinâmica do offset do ADC** para minimizar ruídos e variações.  
 - A calibração remove **valores anômalos** usando um cálculo de **média e desvio padrão**.  
 
-### 3. Cálculo da Corrente RMS  
+#### 3. Cálculo da Corrente RMS  
 - O firmware realiza múltiplas leituras (500 amostras por padrão).  
 - Cada leitura é convertida para tensão usando a fórmula:  
   ```
@@ -84,7 +84,7 @@ Logo após a energização do sistema, o firmware executa a inicialização dos 
   ```  
 - Para obter o **valor RMS**, a soma dos quadrados das correntes medidas é dividida pelo número total de amostras e depois tiramos a raiz quadrada.  
 
-### 4. Cálculo da Potência e Consumo de Energia  
+#### 4. Cálculo da Potência e Consumo de Energia  
 - A potência instantânea é calculada pela fórmula:  
   ```
   P = I_RMS * V_RMS
@@ -95,11 +95,11 @@ Logo após a energização do sistema, o firmware executa a inicialização dos 
   ```  
 - A média da potência é usada para **estimar o consumo mensal**.  
 
-### 5. Armazenamento dos Dados  
+#### 5. Armazenamento dos Dados  
 - O consumo de energia é salvo na memória flash a cada 6 segundos para **evitar perda de dados** após reinicializações.  
 - O usuário pode **resetar o consumo acumulado** pressionando um Botão C.  
 
-### 6. Envio dos Dados para o Servidor  
+#### 6. Envio dos Dados para o Servidor  
 - A cada leitura, os dados são enviados para um **servidor Flask via requisição HTTP GET**.  
 - O envio inclui:  
   - Potência atual  
@@ -108,7 +108,7 @@ Logo após a energização do sistema, o firmware executa a inicialização dos 
 - A comunicação é feita via **Wi-Fi (CYW43)**/**TCP/IP**/ e usa **IP fixo** para o servidor.  
 
 
-**Interface de Usuário**
+## Interface de Usuário
 
 A interface do firmware utiliza menus exibidos no display OLED e navegáveis pelos botões A e B:
 
