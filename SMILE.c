@@ -13,48 +13,60 @@
 #include "saveSystem.h"
 #include "hardware/timer.h"
 
-#define T1 0.82900
-#define TAX 0.31
+// Definições de constantes para cálculos de energia
+#define T1 0.82900   // Tarifa de energia por kWh
+#define TAX 0.31      // Taxa de impostos sobre a energia
+
+// Credenciais de Wi-Fi
 #define SSID "Familia Brandao "
 #define PASS "994706949"
-#define SERVER_IP "192.168.18.142"  // IP correto do servidor Flask
-#define SERVER_PORT 5000
+
+// Configuração do servidor Flask
+#define SERVER_IP "192.168.18.142" // Endereço do servidor
+#define SERVER_PORT 5000            // Porta do servidor
+
+// Configuração do display SSD1306
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 #define SCREEN_ADDRESS 0x3C // Endereço I2C do display
 #define I2C_SDA 14          // Pino SDA
 #define I2C_SCL 15          // Pino SCL
-#define LED_PIN 12          // Define o pino do LED
-#define BTN_A_PIN 5 // Pino do botão A
-#define BTN_B_PIN 6 // Pino do botão B
-#define BTN_ANALOG_PIN 22 //Pino do botão do analogico
+
+// Definição dos botões
+#define LED_PIN 12          // Pino do LED
+#define BTN_A_PIN 5         // Pino do botão A
+#define BTN_B_PIN 6         // Pino do botão B
+#define BTN_ANALOG_PIN 22   // Pino do botão analógico
+
 // Tamanho da imagem em bytes (para exibição no display)
 #define Tamanho_da_imagem (128 * 64 / 8)
+
 // Configuração do ADC para leitura do sensor SCT-013
-#define ADC_PIN_SENSOR 28 // Pino do ADC onde o sensor está conectado
-#define VREF 3.3 // Tensão de referência do ADC (em volts)
-#define ADC_MAX 4095 // Valor máximo do ADC de 12 bits
-// Parâmetros do sensor SCT-013
-#define BURDEN_RESISTOR 33.0 // Resistor de carga em ohms para conversão de corrente
-#define VOLTAGE_RMS 220.0 // Tensão RMS da rede elétrica (em volts)
-#define SAMPLE_SIZE 500 // Número de amostras para cálculo RMS
-#define CALIBRATION_FACTOR 1300 // Fator de calibração para conversão da leitura do ADC em corrente real
-struct tcp_pcb *pcb;
-struct data_t{
-    float potency;
-    float estime;
-    float total;
+#define ADC_PIN_SENSOR 28   // Pino do ADC onde o sensor está conectado
+#define VREF 3.3            // Tensão de referência do ADC (em volts)
+#define ADC_MAX 4095        // Valor máximo do ADC de 12 bits
+#define BURDEN_RESISTOR 33.0 // Resistor de carga em ohms
+#define VOLTAGE_RMS 220.0   // Tensão RMS da rede elétrica
+#define SAMPLE_SIZE 500     // Número de amostras para cálculo RMS
+#define CALIBRATION_FACTOR 1300 // Fator de calibração do sensor SCT-013
+
+// Estrutura para envio de dados ao servidor
+struct data_t {
+    float potency; // Potência medida
+    float estime;  // Estimativa mensal de consumo
+    float total;   // Consumo total acumulado
 };
 // Instância do display SSD1306
 ssd1306_t display;
-float val;
-// Variáveis de energia consumida
+// Variáveis globais de energia
 float energycon = 0.0;
 int med = 0;
 float potmid = 0.0;
 float pottotal = 0.0;
 double estimate = 0.0;
-float potencia;
+float current;
+float potency;
+float val;
 
 // Função para calcular o valor da conta de energia com impostos
 float energybill(float watt){
@@ -64,14 +76,30 @@ float energybill(float watt){
     subtotal = cust + trib;
     return subtotal;
 }
+// Callback para quando os dados forem recebidos
+err_t tcp_recv_callback(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err) {
+    if (p == NULL) {
+        // Conexão fechada pelo servidor
+        printf("Conexão fechada pelo servidor\n");
+        tcp_close(pcb);
+        return ERR_OK;
+    }
 
+    // Processar os dados recebidos
+    printf("Dados recebidos: %.*s\n", p->tot_len, (char *)p->payload);
+
+    // Liberar o buffer de recepção
+    pbuf_free(p);
+
+    return ERR_OK;
+}
+// Função callback de conexão TCP
 err_t tcp_connected_callback(void *arg, struct tcp_pcb *pcb, err_t err) {
     if (err == ERR_OK) {
         printf("Conexão estabelecida!\n");
         struct data_t *data = (struct data_t *)arg;
         // Criar requisição HTTP
         char request[512];
-        float temperature = *(float *)arg; // Obtendo temperatura passada como argumento
         snprintf(request, sizeof(request), 
                  "GET /update?kw=%.2f&estimate=%.2f&total=%.4f HTTP/1.1\r\nHost: " SERVER_IP ":%d\r\n\r\n", 
                  data->potency, data->estime, data->total, SERVER_PORT);
@@ -85,6 +113,8 @@ err_t tcp_connected_callback(void *arg, struct tcp_pcb *pcb, err_t err) {
             printf("Erro ao enviar requisição: %d\n", write_err);
         }
 
+        tcp_recv(pcb, tcp_recv_callback);
+
         // Fechar conexão após envio dos dados
         tcp_close(pcb);
         free(data);
@@ -93,10 +123,10 @@ err_t tcp_connected_callback(void *arg, struct tcp_pcb *pcb, err_t err) {
         printf("Erro na conexão do servidor: %d\n", err);
         free(arg);    
     }
+    
     return err;
 }
-
-
+// Callback para o botão analógico
 void gpio_callback(uint gpio, uint32_t events){
     if(gpio == BTN_ANALOG_PIN && (events & GPIO_IRQ_EDGE_FALL)){
         printf("Botão pressionado\n");
@@ -106,17 +136,16 @@ void gpio_callback(uint gpio, uint32_t events){
     if(gpio == BTN_ANALOG_PIN && (events & GPIO_IRQ_EDGE_RISE)){
         printf("Botão Solto!\n");
     }
-
 }
-
+// Callback do timer para salvar energia na memória
 bool timer_callback(repeating_timer_t *rt){
     write_float_to_flash(val);
     printf("SALVO na memoria = %f\n", val);
     return true;
 
 }
-
-void send_potencia(float potency, float estimate, float total) {
+// Envia dados de potência para o servidor
+void send_potency(float potency, float estimate, float total) {
     struct tcp_pcb *pcb = tcp_new();
     if (!pcb) { 
         printf("Erro ao criar PCB\n");
@@ -149,7 +178,7 @@ void send_potencia(float potency, float estimate, float total) {
 
     sleep_ms(1000);
 }
-
+// Calibração do ADC para medir corrente corretamente
 int calibrateADCoffset(int samples) {
     int sum = 0;
     int values[samples];
@@ -182,7 +211,7 @@ int calibrateADCoffset(int samples) {
 }
 
 
-// Função para medir a corrente RMS
+// Mede corrente RMS do sensor SCT-013
 float readCurrentRMS(int samples, int adc_offset, int adc_pin) {
     adc_select_input(ADC_BASE_PIN);
     float sum = 0;
@@ -227,7 +256,65 @@ void showinit(ssd1306_t *display, const uint8_t *imagem, size_t tamanho, uint32_
     ssd1306_bmp_show_image(display, imagem, tamanho);
     ssd1306_show(display);
     sleep_ms(tempo);
-}    
+}  
+void initall(){
+    stdio_init_all();
+
+    i2c_init(i2c1, 400 * 1000); // 400 kHz
+    gpio_set_function(I2C_SDA, GPIO_FUNC_I2C);
+    gpio_set_function(I2C_SCL, GPIO_FUNC_I2C);
+    gpio_pull_up(I2C_SDA);
+    gpio_pull_up(I2C_SCL);
+
+    // Inicializa botões
+    gpio_init(BTN_A_PIN);
+    gpio_set_dir(BTN_A_PIN, GPIO_IN);
+    gpio_pull_up(BTN_A_PIN);
+
+    gpio_init(BTN_B_PIN);
+    gpio_set_dir(BTN_B_PIN, GPIO_IN);
+    gpio_pull_up(BTN_B_PIN);
+
+    gpio_init(BTN_ANALOG_PIN);
+    gpio_set_dir(BTN_ANALOG_PIN, GPIO_IN);
+    gpio_pull_up(BTN_ANALOG_PIN);
+
+    // Inicializa o display
+    if (!ssd1306_init(&display, SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_ADDRESS, i2c1)) { 
+        printf("Falha ao inicializar o display SSD1306\n");
+    }
+
+    if (cyw43_arch_init()) {
+        printf("Erro ao iniciar Wi-Fi\n");
+    }
+
+    showinit(&display, smile, Tamanho_da_imagem, 1000);
+    showinit(&display, smile1, Tamanho_da_imagem, 500);
+    showinit(&display, smile, Tamanho_da_imagem, 2000);
+
+    cyw43_arch_enable_sta_mode();
+
+    printf("Conectando ao Wi-Fi...\n");
+    if (cyw43_arch_wifi_connect_timeout_ms(SSID, PASS, CYW43_AUTH_WPA2_AES_PSK, 20000)) {
+        printf("Erro ao conectar ao Wi-Fi\n");
+    }
+    printf("Wi-Fi conectado!\n");
+
+    // Inicializa o ADC
+    adc_init();
+    adc_gpio_init(ADC_PIN_SENSOR);
+    adc_select_input(2);  // Seleciona o canal do sensor SCT-013 (Canal 1)
+
+}
+
+void calculate_data(){
+    float hours = 1.0 / 3600.0;
+    energycon += (potency * hours) / 1000;  // Acumula o valor consumido
+    pottotal += potency; // Potência total
+    potmid = pottotal / (med > 0 ? med : 1); // Potência Média
+    estimate = (potmid * 24 * 30) / 1000.0; // Potência Estimada
+    val = energycon;
+}
 
 // Estrutura para o Menu
 typedef struct {
@@ -262,51 +349,10 @@ void gpio_menu(uint gpio, uint32_t events){
         else{trocaMenu(&op1);}
     }
 }
+
 int main() {
-    stdio_init_all();
-
-    i2c_init(i2c1, 400 * 1000); // 400 kHz
-    gpio_set_function(I2C_SDA, GPIO_FUNC_I2C);
-    gpio_set_function(I2C_SCL, GPIO_FUNC_I2C);
-    gpio_pull_up(I2C_SDA);
-    gpio_pull_up(I2C_SCL);
-
-    // Inicializa botões
-    gpio_init(BTN_A_PIN);
-    gpio_set_dir(BTN_A_PIN, GPIO_IN);
-    gpio_pull_up(BTN_A_PIN);
-
-    gpio_init(BTN_B_PIN);
-    gpio_set_dir(BTN_B_PIN, GPIO_IN);
-    gpio_pull_up(BTN_B_PIN);
-
-    gpio_init(BTN_ANALOG_PIN);
-    gpio_set_dir(BTN_ANALOG_PIN, GPIO_IN);
-    gpio_pull_up(BTN_ANALOG_PIN);
-
-    // Inicializa o display
-    if (!ssd1306_init(&display, SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_ADDRESS, i2c1)) { 
-        printf("Falha ao inicializar o display SSD1306\n");
-        return 1; // Sai do programa
-    }
-
-    if (cyw43_arch_init()) {
-        printf("Erro ao iniciar Wi-Fi\n");
-        return 1;
-    }
-
-    cyw43_arch_enable_sta_mode();
-
-    printf("Conectando ao Wi-Fi...\n");
-    if (cyw43_arch_wifi_connect_timeout_ms(SSID, PASS, CYW43_AUTH_WPA2_AES_PSK, 20000)) {
-        printf("Erro ao conectar ao Wi-Fi\n");
-        return 1;
-    }
-    printf("Wi-Fi conectado!\n");
-
-    showinit(&display, smile, Tamanho_da_imagem, 1000);
-    showinit(&display, smile1, Tamanho_da_imagem, 500);
-    showinit(&display, smile, Tamanho_da_imagem, 2000);
+    
+    initall();
 
     // Inicializar menus
     mainMenu = (Menu) {
@@ -328,11 +374,6 @@ int main() {
     };
     actualMenu = &mainMenu;
 
-    // Inicializa o ADC
-    adc_init();
-    adc_gpio_init(ADC_PIN_SENSOR);
-    adc_select_input(2);  // Seleciona o canal do sensor SCT-013 (Canal 1)
-
     // Calibração dinâmica do offset do ADC
     int adc_offset = calibrateADCoffset(500);
     printf("Offset do ADC calibrado: %d\n", adc_offset);
@@ -341,48 +382,38 @@ int main() {
 
     repeating_timer_t timer;
     add_repeating_timer_ms(15000, timer_callback, NULL, &timer);
-    float flashsave = read_float_from_flash();
+    float flash_save = read_float_from_flash();
 
     gpio_set_irq_enabled_with_callback(BTN_A_PIN, GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE, true, &gpio_menu);
     gpio_set_irq_enabled_with_callback(BTN_B_PIN, GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE, true, &gpio_menu);
 
-    if(flashsave <= 0){
-        flashsave = 0;
+    if(flash_save <= 0){
+        flash_save = 0;
     }
 
-    energycon = flashsave;
+    energycon = flash_save;
     
     while (true) {
         med++;
-        float corrente = readCurrentRMS(SAMPLE_SIZE, adc_offset, ADC_PIN_SENSOR);
-        potencia = corrente * VOLTAGE_RMS;
+        current = readCurrentRMS(SAMPLE_SIZE, adc_offset, ADC_PIN_SENSOR);
+        potency = current * VOLTAGE_RMS;
         // Atualiza o valor de energia consumida
-        float hours = 1.0 / 3600.0;
-        energycon += (potencia * hours) / 1000;  // Acumula o valor consumido
-        pottotal += potencia; // Potência total
-        potmid = pottotal / (med > 0 ? med : 1); // Potência Média
-        estimate = (potmid * 24 * 30) / 1000.0; // Potência Estimada
-        send_potencia(potencia, estimate, energycon);
-        val = energycon;
-        printf("Potência calculada: %.2f W\n", potencia);
-
+        calculate_data();
+        send_potency(potency, estimate, energycon);
 
         if(gpio_get(BTN_ANALOG_PIN) == 0){
             clearSaveData();
             sleep_ms(1000);
         }
 
-
         if (actualMenu == &sensorMenu) {
             char kw[20], kwh[20], RSkwh[20]; // kwh - Valor consumido em kw | RSkwh - Valor consumido em Reais
             snprintf(kwh, sizeof(kwh), "Consumo:%.2f KWh", energycon);
             float energylive = energybill (energycon);
             sprintf(RSkwh, "R$ %.2f Reais", energylive);
-            sprintf(kw, "Consumo:%.2f W", potencia);
-            
+            sprintf(kw, "Consumo:%.2f W", potency);
             mostrarDadosNaTela(kw, kwh, RSkwh);
-            
-            continue; // Pular a lógica do menu normal e voltar ao loop
+            continue;
         }
         
         if (actualMenu == &op1) {
@@ -390,11 +421,10 @@ int main() {
             snprintf(avarengeKW, sizeof(avarengeKW), "Media KWh = %.2f", estimate);
             float energymens = energybill(estimate);
             snprintf(avarengeRS, sizeof(avarengeRS), "Media em R$: %.2f", energymens);
-            
             mostrarDadosNaTela(avarengeKW, avarengeRS, NULL);
-
-            continue; // Pular a lógica do menu normal e voltar ao loop
+            continue;
         }
+        
         
         ssd1306_clear(&display);
         // Desenha o cabeçalho do menu
